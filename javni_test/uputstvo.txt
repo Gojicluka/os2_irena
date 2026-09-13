@@ -1,0 +1,3 @@
+Test radi samo sa jednim procesom. Alokator koristi samo taj jedan proces, ne i ostatak operativnog sistema.
+
+Implementirati printf ili zameniti necim sto ispisuje iste podatke. Izmeniti i ostale tehničke stvari tako da se program prilagodi rešenju (npr. include fajlovi, imena sistemskih poziva, itd.).
