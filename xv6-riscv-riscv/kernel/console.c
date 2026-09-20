@@ -21,6 +21,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "proc.h"
+#include "slab.h"
 
 #define BACKSPACE 0x100  // erase the last output character
 #define C(x)  ((x)-'@')  // Control-x
@@ -42,16 +43,19 @@ consputc(int c)
   }
 }
 
-struct {
+struct console_state {
   struct spinlock lock;
   
   // input circular buffer
 #define INPUT_BUF_SIZE 128
-  char buf[INPUT_BUF_SIZE];
+  char *buf;
   uint r;  // Read index
   uint w;  // Write index
   uint e;  // Edit index
-} cons;
+};
+
+static struct console_state *consp;
+#define cons (*consp)
 
 //
 // user write() system calls to the console go here.
@@ -60,11 +64,13 @@ struct {
 int
 consolewrite(int user_src, uint64 src, int n)
 {
-  char buf[32]; // move batches from user space to uart.
+  char *buf = kmalloc(32); // move batches from user space to uart.
   int i = 0;
 
+  if(buf == 0)
+    return -1;
   while(i < n){
-    int nn = sizeof(buf);
+    int nn = 32;
     if(nn > n - i)
       nn = n - i;
     if(either_copyin(buf, user_src, src+i, nn) == -1)
@@ -73,6 +79,7 @@ consolewrite(int user_src, uint64 src, int n)
     i += nn;
   }
 
+  kfree(buf);
   return i;
 }
 
@@ -187,7 +194,18 @@ consoleintr(int c)
 void
 consoleinit(void)
 {
+  consp = kmalloc(sizeof(*consp));
+  if(consp == 0)
+    panic("console state");
+  memset(consp, 0, sizeof(*consp));
   initlock(&cons.lock, "cons");
+  cons.buf = kmalloc(INPUT_BUF_SIZE);
+  if(cons.buf == 0)
+    panic("console buffer");
+  devsw = kmalloc(sizeof(*devsw) * NDEV);
+  if(devsw == 0)
+    panic("device table");
+  memset(devsw, 0, sizeof(*devsw) * NDEV);
 
   uartinit();
 

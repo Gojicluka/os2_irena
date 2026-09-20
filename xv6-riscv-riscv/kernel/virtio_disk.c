@@ -15,11 +15,12 @@
 #include "fs.h"
 #include "buf.h"
 #include "virtio.h"
+#include "slab.h"
 
 // the address of virtio mmio register r.
 #define R(r) ((volatile uint32 *)(VIRTIO0 + (r)))
 
-static struct disk {
+struct disk {
   // a set (not a ring) of DMA descriptors, with which the
   // driver tells the device where to read and write individual
   // disk operations. there are NUM descriptors.
@@ -39,31 +40,46 @@ static struct disk {
   struct virtq_used *used;
 
   // our own book-keeping.
-  char free[NUM];  // is a descriptor free?
+  char *free;  // is a descriptor free?
   uint16 used_idx; // we've looked this far in used[2..NUM].
 
   // track info about in-flight operations,
   // for use when completion interrupt arrives.
   // indexed by first descriptor index of chain.
-  struct {
+  struct disk_info {
     struct buf *b;
     char status;
-  } info[NUM];
+  } *info;
 
   // disk command headers.
   // one-for-one with descriptors, for convenience.
-  struct virtio_blk_req ops[NUM];
+  struct virtio_blk_req *ops;
   
   struct spinlock vdisk_lock;
   
-} disk;
+};
+
+static struct disk *diskp;
+#define disk (*diskp)
 
 void
 virtio_disk_init(void)
 {
   uint32 status = 0;
 
+  diskp = kmalloc(sizeof(*diskp));
+  if(diskp == 0)
+    panic("virtio disk state");
+  memset(diskp, 0, sizeof(*diskp));
   initlock(&disk.vdisk_lock, "virtio_disk");
+  disk.free = kmalloc(NUM);
+  disk.info = kmalloc(sizeof(*disk.info) * NUM);
+  disk.ops = kmalloc(sizeof(*disk.ops) * NUM);
+  if(!disk.free || !disk.info || !disk.ops)
+    panic("virtio disk metadata");
+  memset(disk.free, 0, NUM);
+  memset(disk.info, 0, sizeof(*disk.info) * NUM);
+  memset(disk.ops, 0, sizeof(*disk.ops) * NUM);
 
   if(*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
      *R(VIRTIO_MMIO_VERSION) != 2 ||
@@ -265,7 +281,7 @@ virtio_disk_rw(struct buf *b, int write)
   disk.desc[idx[2]].next = 0;
 
   // record struct buf for virtio_disk_intr().
-  b->disk = 1;
+  b->disk_owned = 1;
   disk.info[idx[0]].b = b;
 
   // tell the device the first index in our chain of descriptors.
@@ -281,7 +297,7 @@ virtio_disk_rw(struct buf *b, int write)
   *R(VIRTIO_MMIO_QUEUE_NOTIFY) = 0; // value is queue number
 
   // Wait for virtio_disk_intr() to say request has finished.
-  while(b->disk == 1) {
+  while(b->disk_owned == 1) {
     sleep(b, &disk.vdisk_lock);
   }
 
@@ -317,7 +333,7 @@ virtio_disk_intr()
       panic("virtio_disk_intr status");
 
     struct buf *b = disk.info[id].b;
-    b->disk = 0;   // disk is done with buf
+    b->disk_owned = 0;   // disk is done with buf
     wakeup(b);
 
     disk.used_idx += 1;

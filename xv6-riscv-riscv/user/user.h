@@ -1,5 +1,7 @@
 #define SBRK_ERROR ((char *)-1)
 
+#include "slab.h"
+
 struct stat;
 
 // system calls

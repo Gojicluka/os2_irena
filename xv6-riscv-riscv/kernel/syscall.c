@@ -101,6 +101,16 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+extern uint64 sys_kmem_init(void);
+extern uint64 sys_kmem_cache_create(void);
+extern uint64 sys_kmem_cache_shrink(void);
+extern uint64 sys_kmem_cache_alloc(void);
+extern uint64 sys_kmem_cache_free(void);
+extern uint64 sys_kmalloc(void);
+extern uint64 sys_kfree(void);
+extern uint64 sys_kmem_cache_destroy(void);
+extern uint64 sys_kmem_cache_info(void);
+extern uint64 sys_kmem_cache_error(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -126,6 +136,16 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_kmem_init]          sys_kmem_init,
+[SYS_kmem_cache_create]  sys_kmem_cache_create,
+[SYS_kmem_cache_shrink]  sys_kmem_cache_shrink,
+[SYS_kmem_cache_alloc]   sys_kmem_cache_alloc,
+[SYS_kmem_cache_free]    sys_kmem_cache_free,
+[SYS_kmalloc]            sys_kmalloc,
+[SYS_kfree]              sys_kfree,
+[SYS_kmem_cache_destroy] sys_kmem_cache_destroy,
+[SYS_kmem_cache_info]    sys_kmem_cache_info,
+[SYS_kmem_cache_error]   sys_kmem_cache_error,
 };
 
 void

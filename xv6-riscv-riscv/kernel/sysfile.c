@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "slab.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -454,7 +455,7 @@ sys_exec(void)
       argv[i] = 0;
       break;
     }
-    argv[i] = kalloc();
+    argv[i] = kmalloc(PGSIZE);
     if(argv[i] == 0)
       goto bad;
     if(fetchstr(uarg, argv[i], PGSIZE) < 0)

@@ -11,12 +11,12 @@ void
 main()
 {
   if(cpuid() == 0){
-    consoleinit();
+    kinit();         // buddy and slab allocators
     printfinit();
+    consoleinit();
     printf("\n");
     printf("xv6 kernel is booting\n");
     printf("\n");
-    kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
     procinit();      // process table
@@ -27,6 +27,7 @@ main()
     binit();         // buffer cache
     iinit();         // inode table
     fileinit();      // file table
+    pipeinit();      // pipe object cache
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
     __sync_synchronize();

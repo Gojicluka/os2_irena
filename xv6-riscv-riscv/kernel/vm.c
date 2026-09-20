@@ -205,7 +205,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       continue;
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      kpage_free((void*)pa);
     }
     *pte = 0;
   }
@@ -231,7 +231,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
-      kfree(mem);
+      kpage_free(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
@@ -274,7 +274,7 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  kfree((void*)pagetable);
+  kpage_free((void*)pagetable);
 }
 
 // Free user memory pages,
@@ -312,7 +312,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       goto err;
     memmove(mem, (char*)pa, PGSIZE);
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+      kpage_free(mem);
       goto err;
     }
   }
@@ -466,7 +466,7 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
     return 0;
   memset((void *) mem, 0, PGSIZE);
   if (mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_U|PTE_R) != 0) {
-    kfree((void *)mem);
+    kpage_free((void *)mem);
     return 0;
   }
   return mem;

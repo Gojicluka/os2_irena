@@ -15,6 +15,7 @@ struct file {
 
 // in-memory copy of an inode
 struct inode {
+  struct inode *cache_next;
   uint dev;           // Device number
   uint inum;          // Inode number
   int ref;            // Reference count
@@ -35,6 +36,6 @@ struct devsw {
   int (*write)(int, uint64, int);
 };
 
-extern struct devsw devsw[];
+extern struct devsw *devsw;
 
 #define CONSOLE 1
