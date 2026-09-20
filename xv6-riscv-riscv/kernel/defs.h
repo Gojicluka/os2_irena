@@ -57,7 +57,7 @@ void            ireclaim(int);
 
 // kalloc.c
 void*           kalloc(void);
-void            kfree(void *);
+void            kpage_free(void *);
 void            kinit(void);
 
 // log.c
@@ -67,6 +67,7 @@ void            begin_op(void);
 void            end_op(void);
 
 // pipe.c
+void            pipeinit(void);
 int             pipealloc(struct file**, struct file**);
 void            pipeclose(struct pipe*, int);
 int             piperead(struct pipe*, uint64, int);

@@ -20,26 +20,31 @@
 #include "fs.h"
 #include "buf.h"
 #include "file.h"
+#include "slab.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
 // only one device
-struct superblock sb; 
+static struct superblock *sbp;
+#define sb (*sbp)
 
 // Read the super block.
 static void
-readsb(int dev, struct superblock *sb)
+readsb(int dev, struct superblock *out)
 {
   struct buf *bp;
 
   bp = bread(dev, 1);
-  memmove(sb, bp->data, sizeof(*sb));
+  memmove(out, bp->data, sizeof(*out));
   brelse(bp);
 }
 
 // Init fs
 void
 fsinit(int dev) {
+  sbp = kmalloc(sizeof(*sbp));
+  if(sbp == 0)
+    panic("superblock");
   readsb(dev, &sb);
   if(sb.magic != FSMAGIC)
     panic("invalid file system");
@@ -174,20 +179,27 @@ bfree(int dev, uint b)
 // dev, and inum.  One must hold ip->lock in order to
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
-struct {
+struct inode_table {
   struct spinlock lock;
-  struct inode inode[NINODE];
-} itable;
+  struct inode *head;
+  kmem_cache_t *cache;
+  int count;
+};
+
+static struct inode_table *itablep;
+#define itable (*itablep)
 
 void
 iinit()
 {
-  int i = 0;
-  
+  itablep = kmalloc(sizeof(*itablep));
+  if(itablep == 0)
+    panic("inode table");
+  memset(itablep, 0, sizeof(*itablep));
   initlock(&itable.lock, "itable");
-  for(i = 0; i < NINODE; i++) {
-    initsleeplock(&itable.inode[i].lock, "inode");
-  }
+  itable.cache = kmem_cache_create("inode", sizeof(struct inode), 0, 0);
+  if(itable.cache == 0)
+    panic("inode cache");
 }
 
 static struct inode* iget(uint dev, uint inum);
@@ -253,7 +265,7 @@ iget(uint dev, uint inum)
 
   // Is the inode already in the table?
   empty = 0;
-  for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){
+  for(ip = itable.head; ip; ip = ip->cache_next){
     if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
       ip->ref++;
       release(&itable.lock);
@@ -264,8 +276,18 @@ iget(uint dev, uint inum)
   }
 
   // Recycle an inode entry.
-  if(empty == 0)
-    panic("iget: no inodes");
+  if(empty == 0){
+    if(itable.count == NINODE)
+      panic("iget: no inodes");
+    empty = kmem_cache_alloc(itable.cache);
+    if(empty == 0)
+      panic("iget: no memory");
+    memset(empty, 0, sizeof(*empty));
+    initsleeplock(&empty->lock, "inode");
+    empty->cache_next = itable.head;
+    itable.head = empty;
+    itable.count++;
+  }
 
   ip = empty;
   ip->dev = dev;

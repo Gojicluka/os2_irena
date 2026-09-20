@@ -12,17 +12,20 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "slab.h"
 
-struct devsw devsw[NDEV];
-struct {
-  struct spinlock lock;
-  struct file file[NFILE];
-} ftable;
+struct devsw *devsw;
+static struct spinlock ftable_lock;
+static kmem_cache_t *file_cache;
+static int file_count;
 
 void
 fileinit(void)
 {
-  initlock(&ftable.lock, "ftable");
+  initlock(&ftable_lock, "ftable");
+  file_cache = kmem_cache_create("file", sizeof(struct file), 0, 0);
+  if(file_cache == 0)
+    panic("file cache");
 }
 
 // Allocate a file structure.
@@ -31,27 +34,30 @@ filealloc(void)
 {
   struct file *f;
 
-  acquire(&ftable.lock);
-  for(f = ftable.file; f < ftable.file + NFILE; f++){
-    if(f->ref == 0){
-      f->ref = 1;
-      release(&ftable.lock);
-      return f;
-    }
+  acquire(&ftable_lock);
+  if(file_count == NFILE){
+    release(&ftable_lock);
+    return 0;
   }
-  release(&ftable.lock);
-  return 0;
+  f = kmem_cache_alloc(file_cache);
+  if(f){
+    memset(f, 0, sizeof(*f));
+    f->ref = 1;
+    file_count++;
+  }
+  release(&ftable_lock);
+  return f;
 }
 
 // Increment ref count for file f.
 struct file*
 filedup(struct file *f)
 {
-  acquire(&ftable.lock);
+  acquire(&ftable_lock);
   if(f->ref < 1)
     panic("filedup");
   f->ref++;
-  release(&ftable.lock);
+  release(&ftable_lock);
   return f;
 }
 
@@ -61,17 +67,17 @@ fileclose(struct file *f)
 {
   struct file ff;
 
-  acquire(&ftable.lock);
+  acquire(&ftable_lock);
   if(f->ref < 1)
     panic("fileclose");
   if(--f->ref > 0){
-    release(&ftable.lock);
+    release(&ftable_lock);
     return;
   }
   ff = *f;
-  f->ref = 0;
-  f->type = FD_NONE;
-  release(&ftable.lock);
+  file_count--;
+  release(&ftable_lock);
+  kmem_cache_free(file_cache, f);
 
   if(ff.type == FD_PIPE){
     pipeclose(ff.pipe, ff.writable);
@@ -177,4 +183,3 @@ filewrite(struct file *f, uint64 addr, int n)
 
   return ret;
 }
-

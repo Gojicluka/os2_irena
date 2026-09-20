@@ -6,6 +6,7 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
+#include "slab.h"
 
 // Simple logging that allows concurrent FS system calls.
 //
@@ -45,7 +46,8 @@ struct log {
   int dev;
   struct logheader lh;
 };
-struct log log;
+static struct log *logp;
+#define log (*logp)
 
 static void recover_from_log(void);
 static void commit();
@@ -56,6 +58,10 @@ initlog(int dev, struct superblock *sb)
   if (sizeof(struct logheader) >= BSIZE)
     panic("initlog: too big logheader");
 
+  logp = kmalloc(sizeof(*logp));
+  if(logp == 0)
+    panic("log state");
+  memset(logp, 0, sizeof(*logp));
   initlock(&log.lock, "log");
   log.start = sb->logstart;
   log.dev = dev;
@@ -234,4 +240,3 @@ log_write(struct buf *b)
   }
   release(&log.lock);
 }
-

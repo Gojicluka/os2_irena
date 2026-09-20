@@ -22,28 +22,43 @@
 #include "defs.h"
 #include "fs.h"
 #include "buf.h"
+#include "slab.h"
 
-struct {
+struct bcache_state {
   struct spinlock lock;
-  struct buf buf[NBUF];
+  kmem_cache_t *cache;
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
   struct buf head;
-} bcache;
+};
+
+static struct bcache_state *bcachep;
+#define bcache (*bcachep)
 
 void
 binit(void)
 {
   struct buf *b;
 
+  bcachep = kmalloc(sizeof(*bcachep));
+  if(bcachep == 0)
+    panic("bcache state");
+  memset(bcachep, 0, sizeof(*bcachep));
   initlock(&bcache.lock, "bcache");
+  bcache.cache = kmem_cache_create("buf", sizeof(struct buf), 0, 0);
+  if(bcache.cache == 0)
+    panic("buf cache");
 
   // Create linked list of buffers
   bcache.head.prev = &bcache.head;
   bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+  for(int i = 0; i < NBUF; i++){
+    b = kmem_cache_alloc(bcache.cache);
+    if(b == 0)
+      panic("buf alloc");
+    memset(b, 0, sizeof(*b));
     b->next = bcache.head.next;
     b->prev = &bcache.head;
     initsleeplock(&b->lock, "buffer");
@@ -149,5 +164,3 @@ bunpin(struct buf *b) {
   b->refcnt--;
   release(&bcache.lock);
 }
-
-
